@@ -1,0 +1,243 @@
+MarieIDE — UI & Layout Specification (MVP)
+🎯 Objective
+
+Deliver a minimal, high-performance code editing environment inspired by Cursor’s Composer, but with:
+
+AI-assisted code generation (Composer panel)
+
+Git and checkpoint history timeline
+
+Quick restore of previous states
+
+Lightweight, modern, responsive interface
+
+1. 🧱 Overall Layout
+
+Top-level layout structure:
+
+┌──────────────────────────────────────────────┐
+│ [Titlebar / MenuBar]                        │
+├──────────────────────────────────────────────┤
+│ [Sidebar] │ [Editor Tabs + Code Area] │ [Composer Panel] │
+├──────────────────────────────────────────────┤
+│ [Terminal / Output Panel]                    │
+└──────────────────────────────────────────────┘
+
+Primary Zones
+Zone	Description	Default Size
+Titlebar / MenuBar	Contains project name, Git status indicator, and quick actions.	40px height
+Sidebar (Left)	File explorer + Git & Checkpoint history toggle.	250px width
+Editor Zone (Center)	Monaco Editor + file tabs.	Flexible
+Composer Panel (Right)	AI prompt input, chat history, and results insertion.	300–400px width
+Terminal (Bottom)	Integrated shell, build logs, and AI outputs.	200px height
+2. 🧭 Component Breakdown
+2.1 Titlebar / MenuBar
+
+Purpose: Core commands + quick status display
+
+Components:
+
+Project name (editable inline)
+
+Git branch indicator (clickable to switch branches)
+
+Icons:
+
+💾 Save Checkpoint
+
+⟳ Restore Version
+
+⑂ Git Commit
+
+⚙ Settings
+
+🧠 Composer Toggle
+
+Actions:
+
+Clicking “Save Checkpoint” triggers /checkpoints/create
+
+Hover shows tooltip with timestamp of last checkpoint
+
+Git icon opens small dropdown:
+
+Commit changes
+
+View history
+
+Switch branch
+
+2.2 Sidebar (Left)
+
+Tabs:
+
+Files (default)
+
+History
+
+Files View:
+
+📁 src
+  ├── main.ts
+  ├── /components
+  │    ├── editor.tsx
+  │    ├── composer.tsx
+
+
+History View:
+
+Timeline list combining Git commits and Checkpoints:
+
+🕒 10:45 AM - Checkpoint: "Refactored Auth"
+🔀 10:20 AM - Commit: "Add login UI"
+🕒 9:55 AM - Checkpoint: "Fixed API error"
+
+
+Each entry:
+
+Click → preview diff
+
+“Restore” button → confirm restore modal
+
+2.3 Editor Zone (Center)
+
+Main View:
+
+Monaco Editor
+
+File Tabs above editor:
+
+app.ts | utils.ts | index.html ×
+
+Syntax highlighting for multiple languages
+
+Auto-save on edit or blur
+
+Inline AI Assist:
+
+Context menu option → “Ask Composer”
+
+Result can appear inline with diff-style preview:
+
++ Suggested Code by AI
+- Old code replaced
+
+2.4 Composer Panel (Right)
+
+Purpose: AI-driven assistant for code, documentation, or refactoring.
+
+Sections:
+
+Prompt Input Box
+
+Multi-line input
+
+“Run” button triggers /ai/compose
+
+Example placeholder: “Explain this function…”
+
+Response Window
+
+Scrollable list of previous results
+
+Code blocks rendered with syntax highlighting
+
+“Insert into Editor” button under code responses
+
+Header Controls
+
+Model selector dropdown (local, gpt-5, etc.)
+
+Context display (shows current open file)
+
+Interaction Flow:
+
+User types prompt → AI responds → User inserts result → Editor updates
+
+2.5 Terminal Panel (Bottom)
+
+Tabs:
+
+Terminal
+
+Output
+
+AI Log
+
+Features:
+
+Standard terminal emulation (PTY)
+
+Command history
+
+AI Log tab lists recent Composer requests and responses for debugging
+
+3. 🎨 Visual Style Guide
+Element	Style
+Theme	Dark mode default, light mode toggleable
+Primary Font	Inter / JetBrains Mono
+Accent Color	#7AA2F7 (calm blue)
+Corners	Rounded 2xl (soft edges)
+Shadows	Light elevation on panels
+Icons	Lucide Icons (simple line icons)
+Animation	Framer Motion for panel slides and popups
+4. 📱 Responsive Behavior
+Viewport	Behavior
+< 900px	Composer collapses into bottom drawer
+< 600px	Sidebar collapses into overlay
+Split View	Panels draggable via resizers (react-resizable or custom CSS grid resizing)
+5. 🧩 Interaction Flow Summary
+1️⃣ Checkpoint Creation
+
+User clicks 💾 “Save Checkpoint”
+
+Backend saves file states to /storage/checkpoints.db
+
+Toast confirmation: “Checkpoint saved at 10:45 AM”
+
+2️⃣ Version Restore
+
+User opens History tab
+
+Clicks an entry → preview diff
+
+Clicks “Restore” → confirmation modal
+
+Editor refreshes with checkpoint content
+
+3️⃣ AI Composition
+
+User selects code → right-click “Ask Composer”
+
+Composer panel opens with context prefilled
+
+User edits prompt → clicks “Run”
+
+AI response shows diff → “Insert into Editor”
+
+4️⃣ Git Commit
+
+User clicks ⑂ → commit modal
+
+Enters message → clicks “Commit”
+
+Toast: “Committed changes to branch main”
+
+6. ⚙️ Implementation Notes for Engineers
+Feature	Suggested Implementation
+Resizable Layout	Use CSS grid with adjustable columns (e.g. react-split-pane)
+Diff Viewer	Use react-diff-viewer or similar
+Monaco Editor Integration	Via @monaco-editor/react
+Composer Chat UI	Simple React component with scrollable history
+Storage	Local filesystem + SQLite for checkpoints
+Versioning Logic	Diff/patch application for fast restore
+Theming	Tailwind dark/light variants
+7. 🧩 Phase 1 Deliverables (UI)
+Component	Deliverable
+Layout shell (Tauri + React)	✅ Basic 3-panel layout
+File tree + history sidebar	✅ File open, checkpoint timeline
+Monaco editor	✅ Syntax, tabs, save hooks
+Composer panel	✅ Prompt input + AI response
+Terminal panel	✅ Local shell running
+Checkpoint buttons	✅ Create + Restore working
+Git integration (CLI)	✅ Init, commit, branch

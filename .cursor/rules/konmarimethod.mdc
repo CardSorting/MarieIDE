@@ -1,0 +1,451 @@
+---
+alwaysApply: true
+---
+## 📝 Naming Standards (Non-Negotiable)
+
+### Files (MUST use snake_case)
+
+```typescript
+✅ prompt_manager.ts
+✅ response_formatters.ts
+✅ context_summarization.ts
+❌ PromptRegistry.ts          // wrong case
+❌ loadMcpDocumentation.ts    // camelCase forbidden
+```
+
+**Descriptive patterns:**
+- Verbs: `manager`, `builder`, `optimizer`, `organizer`, `validator`, `formatter`, `handler`
+- Nouns: `prompt`, `variant`, `template`, `tool`, `response`, `context`, `configuration`
+
+### Variables & Functions
+
+- **MUST be self-explanatory** without comments
+- **NO abbreviations** except: `id`, `url`, `api`, `ui`, `db`
+- **Indicate type/purpose clearly**:
+  - Functions: `getUserById()`, `isValidEmail()`, `formatUserResponse()`
+  - Variables: `userCount`, `activeSessionList`, `isAuthenticated`
+  - Booleans: `isActive`, `hasPermission`, `shouldRetry`
+  - Arrays: `userList`, `errorMessages`, `activeConnections`
+
+---
+
+## 🔧 Type Safety & Quality (Required)
+
+### Non-Negotiable Rules
+
+#### ✅ ALWAYS DO
+
+- Use specific types (`User`, `string`, `number`) over `any`
+- Validate ALL inputs before database operations
+- Write tests for public methods (target: 80%+ coverage)
+- Add JSDoc to all public APIs
+- Create actionable error messages with fix guidance
+- Use `unknown` instead of `any` when type is genuinely unknown, then narrow it
+
+#### ❌ NEVER DO
+
+- Use `any` type without explicit comment justification
+- Skip input validation on user-provided data
+- Leave public APIs undocumented
+- Write vague error messages ("something went wrong")
+- Mutate function parameters directly
+
+### Error Handling Pattern (Required)
+
+```typescript
+// ALWAYS include actionable guidance
+async function createUser(data: CreateUserData): Promise<User> {
+  try {
+    // Validate required fields
+    if (!data.email) {
+      throw new Error(
+        'Email required. Provide a valid email address to create user account.'
+      )
+    }
+    
+    // Validate format
+    if (!isValidEmail(data.email)) {
+      throw new Error(
+        'Invalid email format. Use format: user@example.com'
+      )
+    }
+    
+    // Check for duplicates
+    const existing = await this.repository.findByEmail(data.email)
+    if (existing) {
+      throw new Error(
+        'Email already registered. Use a different email or login to existing account.'
+      )
+    }
+    
+    return await this.repository.create(data)
+  } catch (error) {
+    // Preserve actionable errors, add context to others
+    if (error instanceof Error && error.message.includes('Email')) {
+      throw error
+    }
+    throw new Error(
+      `Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}. Check database connection and try again.`
+    )
+  }
+}
+```
+
+### Input Validation Pattern
+
+```typescript
+// Create validation helpers for reuse
+function validateEmail(email: unknown): string {
+  if (typeof email !== 'string') {
+    throw new Error('Email must be a string')
+  }
+  if (!email.includes('@')) {
+    throw new Error('Email must contain @ symbol. Use format: user@example.com')
+  }
+  return email.toLowerCase().trim()
+}
+
+// Use at boundaries (API routes, database operations)
+async function createUserRoute(req: Request, res: Response) {
+  try {
+    const email = validateEmail(req.body.email)
+    const user = await userService.createUser({ email })
+    res.json(user)
+  } catch (error) {
+    res.status(400).json({ 
+      error: error instanceof Error ? error.message : 'Invalid request'
+    })
+  }
+}
+```
+
+---
+
+## 🏗️ Architecture Standards
+
+### Core Principles
+
+- **Separation of Concerns** - Data access ≠ business logic ≠ presentation
+- **Service Layer** - Only when business logic complexity justifies it
+- **Organize by Feature** - Group related functionality (`/users`, `/auth`, `/billing`)
+- **Composition Over Creation** - Prefer proven libraries over custom implementations
+- **Dependency Injection** - Pass dependencies explicitly, avoid global state
+
+### Repository Pattern (Data Access Layer)
+
+```typescript
+// Handle ONLY database operations
+export class UserRepository {
+  constructor(private db: Database) {}
+  
+  async findByEmail(email: string): Promise<User | null> {
+    const normalized = email.toLowerCase().trim()
+    return await this.db.query(
+      'SELECT * FROM users WHERE email = $1',
+      [normalized]
+    )
+  }
+  
+  async create(data: CreateUserData): Promise<User> {
+    return await this.db.query(
+      'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING *',
+      [data.email, data.name]
+    )
+  }
+  
+  async update(id: string, data: Partial<User>): Promise<User> {
+    return await this.db.query(
+      'UPDATE users SET name = $1 WHERE id = $2 RETURNING *',
+      [data.name, id]
+    )
+  }
+}
+```
+
+### Service Layer (When Business Logic Exists)
+
+```typescript
+// Use ONLY when orchestrating multiple operations or complex logic
+export class UserService {
+  constructor(
+    private userRepo: UserRepository,
+    private emailService: EmailService,
+    private logger: Logger
+  ) {}
+  
+  async createUser(data: CreateUserData): Promise<User> {
+    // Validate business rules
+    if (await this.userRepo.findByEmail(data.email)) {
+      throw new Error(
+        'Email already registered. Use different email or login to existing account.'
+      )
+    }
+    
+    // Orchestrate multiple operations
+    const user = await this.userRepo.create(data)
+    await this.emailService.sendWelcome(user.email)
+    this.logger.info('User created', { userId: user.id })
+    
+    return user
+  }
+}
+```
+
+### Feature Organization
+
+```
+src/
+├── users/
+│   ├── user_repository.ts      # Data access
+│   ├── user_service.ts         # Business logic (if needed)
+│   ├── user_types.ts           # Types & interfaces
+│   └── user_routes.ts          # API endpoints
+├── auth/
+│   ├── auth_service.ts
+│   ├── auth_middleware.ts
+│   └── auth_types.ts
+└── shared/
+    ├── database.ts
+    ├── logger.ts
+    └── validation.ts
+```
+
+---
+
+## ⚡ Performance Standards
+
+### Target Benchmarks
+
+- **User-facing operations**: <100ms
+- **Database queries**: <50ms per query
+- **API endpoints**: <200ms response time
+- **Page loads**: <1s time to interactive
+
+### Performance Principles
+
+#### 1. Measure First
+
+```typescript
+// Profile before optimizing
+async function processUsers() {
+  const start = performance.now()
+  const result = await heavyOperation()
+  const duration = performance.now() - start
+  
+  if (duration > 100) {
+    logger.warn('Slow operation detected', { duration, operation: 'processUsers' })
+  }
+  
+  return result
+}
+```
+
+#### 2. Cache Strategically
+
+```typescript
+// Cache expensive operations with clear invalidation
+const cache = new Map<string, { data: User[], timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+async function getActiveUsers(): Promise<User[]> {
+  const cached = cache.get('active_users')
+  const now = Date.now()
+  
+  if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    return cached.data
+  }
+  
+  const users = await userRepo.findActive()
+  cache.set('active_users', { data: users, timestamp: now })
+  return users
+}
+```
+
+#### 3. Optimize Queries
+
+```typescript
+// Use indexes, avoid N+1 queries
+// ❌ BAD - N+1 query problem
+async function getUsersWithPosts() {
+  const users = await db.query('SELECT * FROM users')
+  for (const user of users) {
+    user.posts = await db.query('SELECT * FROM posts WHERE user_id = $1', [user.id])
+  }
+  return users
+}
+
+// ✅ GOOD - Single query with join
+async function getUsersWithPosts() {
+  return await db.query(`
+    SELECT 
+      u.*,
+      json_agg(p.*) as posts
+    FROM users u
+    LEFT JOIN posts p ON p.user_id = u.id
+    GROUP BY u.id
+  `)
+}
+```
+
+#### 4. Load Progressively
+
+```typescript
+// Show content incrementally for large datasets
+async function* streamLargeDataset() {
+  const batchSize = 100
+  let offset = 0
+  
+  while (true) {
+    const batch = await db.query(
+      'SELECT * FROM large_table LIMIT $1 OFFSET $2',
+      [batchSize, offset]
+    )
+    
+    if (batch.length === 0) break
+    yield batch
+    offset += batchSize
+  }
+}
+```
+
+#### 5. Handle Errors Gracefully
+
+```typescript
+// Implement proper error boundaries
+async function withErrorHandling<T>(
+  operation: () => Promise<T>,
+  fallback: T
+): Promise<T> {
+  try {
+    return await operation()
+  } catch (error) {
+    logger.error('Operation failed, using fallback', { error })
+    return fallback
+  }
+}
+```
+
+---
+
+## ✅ Quality Checklist
+
+### Before Starting
+
+- [ ] Understand existing code patterns and architecture
+- [ ] Plan clear, descriptive names (files: snake_case, functions: descriptive)
+- [ ] Design error handling with actionable messages
+- [ ] Consider architecture needs (repositories, services, utilities)
+- [ ] Identify performance requirements and constraints
+
+### During Development
+
+- [ ] Strict TypeScript - no casual `any` (use `unknown` if type uncertain)
+- [ ] Self-documenting names - code reads like prose
+- [ ] Actionable error messages - tell user what to do
+- [ ] Validate all inputs at boundaries (API routes, database operations)
+- [ ] Write tests for public methods (target: 80%+ coverage)
+- [ ] JSDoc on all public APIs with examples
+
+### Performance Verification
+
+- [ ] Response times <100ms for user-facing operations
+- [ ] Database queries <50ms (check with EXPLAIN ANALYZE)
+- [ ] Proper caching strategies for expensive operations
+- [ ] Error boundaries prevent cascading failures
+- [ ] No N+1 query problems
+
+### Before Completing
+
+- [ ] All linter/type errors resolved
+- [ ] Names immediately clear to new readers
+- [ ] Changes documented in commit message with lessons learned
+- [ ] Patterns applied consistently system-wide
+- [ ] All tests passing (run full suite)
+- [ ] No console.log statements (use proper logger)
+
+---
+
+## 🎯 Implementation Workflows
+
+### New Features
+
+1. **Reflect** → Study existing patterns and conventions
+2. **Plan** → Design with type safety, validation, and performance in mind
+3. **Implement** → Build with clear names, proper error handling, input validation
+4. **Test** → Cover public APIs and edge cases (80%+ target)
+5. **Document** → Add JSDoc and write commit message explaining why
+
+### Refactoring
+
+1. **Observe** → What patterns have completed their purpose?
+2. **Learn** → What lessons does this code offer?
+3. **Envision** → What would serve us better now?
+4. **Evolve** → Implement new pattern with lessons learned
+5. **Release** → Remove old code once new path is stable and tested
+6. **Document** → Share lessons in commit message
+
+### Bug Fixes
+
+1. **Understand** → Find root cause, not just symptom
+2. **Fix** → Address underlying issue at its source
+3. **Test** → Add regression test to prevent recurrence
+4. **Document** → Share discovery and fix reasoning
+5. **Strengthen** → Add type safety/validation to prevent similar issues
+
+---
+
+## 🙏 Mindset
+
+**Before each coding session, remember:**
+
+*"I honor the code before me. I learn from every pattern. 'Legacy' was once innovative. I refactor not as criticism, but evolution. I write for clarity. I release with gratitude. I document what we learned. Every commit cares for future developers."*
+
+### The Path
+
+- **Honor existing work** → Learn from it before changing it
+- **Compose over create** → Use proven tools and libraries
+- **Simplify with compassion** → Evolution, not demolition
+- **System-wide changes** → Address patterns everywhere, not piecemeal
+- **Natural order** → Architecture → Naming → Tests → Performance → Documentation
+
+### Remember
+
+This isn't about perfection or ruthlessness—it's about **intentional, compassionate improvement**.
+
+- We **release** code because we learned better ways (not because we hate it)
+- We **evolve** to honor lessons (not to criticize past decisions)
+- We **practice** clarity habits (not enforce rigid rules)
+
+**Be gentle with yourself. Be gentle with the code. Be gentle with those who came before.**
+
+Each small act of care compounds into a codebase that brings clarity and ease.
+
+---
+
+## 📚 Quick Reference
+
+### File Naming
+- ✅ `user_repository.ts`, `auth_service.ts`, `email_validator.ts`
+- ❌ `UserRepository.ts`, `authService.ts`, `emailValidator.ts`
+
+### Function Naming
+- ✅ `getUserById()`, `isValidEmail()`, `formatUserResponse()`
+- ❌ `getUser()`, `validateEmail()`, `format()`
+
+### Error Messages
+- ✅ `"Email required. Provide valid email to create account."`
+- ❌ `"Invalid input"`, `"Error occurred"`
+
+### Type Safety
+- ✅ `function process(data: UserData): Result`
+- ❌ `function process(data: any): any`
+
+### Performance
+- Database queries < 50ms
+- API responses < 200ms
+- Cache expensive operations
+- Measure before optimizing
+
+---
+
+*Philosophy guides thinking. Clarity guides implementation. Compassion guides evolution.*
